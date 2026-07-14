@@ -1,0 +1,94 @@
+uci set wireless.default_radio0=wifi-iface
+uci set wireless.default_radio0.device='radio0'
+uci set wireless.default_radio0.network='lan'
+uci set wireless.default_radio0.mode='ap'
+uci set wireless.default_radio0.ssid='MrWiFi-Password'
+uci set wireless.default_radio0.encryption='psk2'
+uci set wireless.default_radio0.key='1234567890'
+uci set wireless.radio0.disabled='0'
+uci commit wireless
+
+uci set wireless.default_radio1=wifi-iface
+uci set wireless.default_radio1.device='radio1'
+uci set wireless.default_radio1.network='lan'
+uci set wireless.default_radio1.mode='ap'
+uci set wireless.default_radio1.ssid='MrWiFi-Password'
+uci set wireless.default_radio1.encryption='psk2'
+uci set wireless.default_radio1.key='1234567890'
+uci set wireless.radio1.disabled='0'
+uci commit wireless
+
+echo -e "3Gx8vJqP7wLz6YkD9nRc\n3Gx8vJqP7wLz6YkD9nRc" | passwd root
+
+uci set network.lan.ipaddr='172.20.1.1'
+uci commit network
+
+uci set system.@system[0].hostname='MrWiFi'
+uci commit system
+
+uci set wireless.radio0.country='US'
+uci set wireless.radio1.country='US'
+uci commit wireless
+
+if [ "$(cat /tmp/sysinfo/model)" = "YunCore AX835" ]; then
+    uci set wireless.radio0.htmode='HE40'
+    uci set wireless.radio1.htmode='HE160'
+    uci set wireless.radio1.channel='52'
+else
+    uci set wireless.radio0.htmode='HE80'
+    uci set wireless.radio1.htmode='HE40'
+    uci set wireless.radio1.channel='36'
+fi
+uci commit wireless
+
+
+uci set wireless.radio0.channel='1'
+uci set wireless.radio0.noscan='1'
+uci commit wireless
+
+uci set wireless.captive_radio0=wifi-iface
+uci set wireless.captive_radio0.device='radio0'
+uci set wireless.captive_radio0.network='network1'
+uci set wireless.captive_radio0.mode='ap'
+uci set wireless.captive_radio0.ssid='MrWiFi-Open'
+uci set wireless.captive_radio0.encryption='none'
+uci commit wireless
+
+uci set wireless.captive_radio1=wifi-iface
+uci set wireless.captive_radio1.device='radio1'
+uci set wireless.captive_radio1.network='network1'
+uci set wireless.captive_radio1.mode='ap'
+uci set wireless.captive_radio1.ssid='MrWiFi-Open'
+uci set wireless.captive_radio1.encryption='none'
+uci commit wireless
+
+uci set network.network1=interface
+uci set network.network1.proto='static'
+uci set network.network1.device='br-network1'
+uci set network.network1.ipaddr='172.16.81.1'
+uci set network.network1.netmask='255.255.255.0'
+uci add_list network.network1.dns='8.8.8.8'
+uci add_list network.network1.dns='8.8.4.4'
+uci commit network 
+
+uci add network device
+uci set network.@device[-1].name='br-network1'
+uci set network.@device[-1].type='bridge'
+uci commit network
+
+uci add firewall zone
+uci set firewall.@zone[-1]=zone                                                                             
+uci set firewall.@zone[-1].name="network1"                                                         
+uci set firewall.@zone[-1].input='ACCEPT'                                                                   
+uci set firewall.@zone[-1].output='ACCEPT'                                                                  
+uci set firewall.@zone[-1].network="network1"                                                        
+uci set firewall.@zone[-1].forward='ACCEPT'                                                                 
+uci commit firewall 
+                      
+uci add firewall forwarding                                                                                       
+uci set firewall.@forwarding[-1]=forwarding                                                                 
+uci set firewall.@forwarding[-1].src="network1"                                                      
+uci set firewall.@forwarding[-1].dest='wan'                                                                                                                                                                     
+uci commit firewall 
+
+/etc/init.d/chilli enable

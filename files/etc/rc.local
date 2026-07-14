@@ -1,0 +1,110 @@
+#!/bin/sh
+# Boot-time provisioning: wait for internet, fix NTP, download and apply firmware.
+# Target: OpenWrt 24 / BusyBox ash (POSIX sh only, no bash-isms)
+
+FIRMWARE_URL="https://dev.monsieur-wifi.com//firmware/v2-files.tar.gz"
+PING_HOST="8.8.8.8"
+HTTPS_HOST="dev.monsieur-wifi.com"
+WORK_DIR="/tmp/v2-bootstrap"
+LOG_FILE="/tmp/rc.local.log"
+MAX_WAIT=1200
+INTERVAL=30
+
+log() {
+    msg="[$(date '+%Y-%m-%d %H:%M:%S')] rc.local: $*"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+# Start fresh log file each boot
+echo "" > "$LOG_FILE"
+
+log "Starting boot provisioning"
+
+# ---------------------------------------------------------------------------
+# Phase 1: Wait for basic IP connectivity via ping
+# ---------------------------------------------------------------------------
+log "Phase 1: Waiting for ping to $PING_HOST (max ${MAX_WAIT}s, retry every ${INTERVAL}s)..."
+elapsed=0
+while ! ping -c 1 -W 3 "$PING_HOST" > /dev/null 2>&1; do
+    if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+        log "ERROR: ping to $PING_HOST failed after ${MAX_WAIT}s, giving up"
+        exit 1
+    fi
+    log "No ping response yet, retrying in ${INTERVAL}s (elapsed: ${elapsed}s)"
+    sleep "$INTERVAL"
+    elapsed=$((elapsed + INTERVAL))
+done
+log "Phase 1 OK: ping to $PING_HOST succeeded (elapsed: ${elapsed}s)"
+
+# ---------------------------------------------------------------------------
+# Phase 2: Restart NTP now that IP is reachable so it can sync
+# ---------------------------------------------------------------------------
+log "Phase 2: Restarting NTP daemon..."
+/etc/init.d/sysntpd restart
+log "Phase 2 OK: NTP daemon restarted, waiting 5s for initial sync..."
+sleep 5
+
+# ---------------------------------------------------------------------------
+# Phase 3: Wait for HTTPS reachability (confirms DNS + TLS clock is sane)
+# ---------------------------------------------------------------------------
+log "Phase 3: Waiting for HTTPS to $HTTPS_HOST (max ${MAX_WAIT}s, retry every ${INTERVAL}s)..."
+elapsed=0
+while ! curl -s --max-time 5 -o /dev/null "https://$HTTPS_HOST"; do
+    if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+        log "ERROR: HTTPS to $HTTPS_HOST failed after ${MAX_WAIT}s, giving up"
+        exit 1
+    fi
+    log "HTTPS not ready yet, retrying in ${INTERVAL}s (elapsed: ${elapsed}s)"
+    sleep "$INTERVAL"
+    elapsed=$((elapsed + INTERVAL))
+done
+log "Phase 3 OK: HTTPS to $HTTPS_HOST succeeded (elapsed: ${elapsed}s)"
+
+# ---------------------------------------------------------------------------
+# Phase 4: Download → extract → find configure.sh → run it; retry every 2 min
+# ---------------------------------------------------------------------------
+log "Phase 4: Starting firmware download loop from: $FIRMWARE_URL"
+while true; do
+    rm -rf "$WORK_DIR"
+    mkdir -p "$WORK_DIR"
+
+    log "Downloading firmware archive..."
+    if ! curl -fsSL -o "$WORK_DIR/v2-files.tar.gz" "$FIRMWARE_URL"; then
+        log "ERROR: firmware download failed, retrying in 2 minutes..."
+        sleep 120
+        continue
+    fi
+    log "Download complete: $WORK_DIR/v2-files.tar.gz"
+
+    log "Extracting firmware archive..."
+    if ! tar -xzf "$WORK_DIR/v2-files.tar.gz" -C "$WORK_DIR"; then
+        log "ERROR: firmware extraction failed, retrying in 2 minutes..."
+        sleep 120
+        continue
+    fi
+    log "Extraction complete"
+
+    log "Searching for configure.sh in archive..."
+    configure_sh=$(find "$WORK_DIR" -maxdepth 2 -name configure.sh 2>/dev/null | head -n 1)
+
+    if [ -z "$configure_sh" ]; then
+        log "ERROR: configure.sh not found in archive, retrying in 2 minutes..."
+        sleep 120
+        continue
+    fi
+    log "Found configure.sh at: $configure_sh"
+
+    chmod +x "$configure_sh"
+    cd "$(dirname "$configure_sh")" || exit 1
+    log "Running configure.sh in $(pwd)..."
+    ./configure.sh
+    rc=$?
+    log "configure.sh exited with code $rc"
+    break
+done
+
+log "Cleaning up $WORK_DIR"
+rm -rf "$WORK_DIR"
+log "Boot provisioning complete. Full log at: $LOG_FILE"
+exit 0

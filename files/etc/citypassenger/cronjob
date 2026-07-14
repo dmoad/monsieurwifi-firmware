@@ -1,0 +1,2 @@
+*/1 * * * * /bin/sh /etc/citypassenger/push-heartbeat.sh
+*/1 * * * * /bin/sh /etc/citypassenger/sync_network_clients.sh

@@ -1,0 +1,7 @@
+
+config device
+        option secret '1234567890'
+        option key '1234567890'
+        option config_version ''
+        option verification_code 'yajnskswkwnj292in3nAJ'
+        option init '0'

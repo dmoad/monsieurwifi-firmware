@@ -1,0 +1,74 @@
+#!/bin/sh /etc/rc.common
+
+# OpenWrt init.d service for DNS filtering
+START=99
+STOP=10
+
+USE_PROCD=1
+
+# Service name and description
+SERVICE_NAME="dns_filtering"
+DESCRIPTION="DNS Redirection and DoH Blocking Service"
+
+# Path to the dns_redirect.sh script
+SCRIPT_PATH="/etc/citypassenger/dns_redirect.sh"
+
+start_service() {
+    echo "Starting $SERVICE_NAME..."
+    
+    # Check if script exists
+    if [ ! -f "$SCRIPT_PATH" ]; then
+        echo "Error: DNS redirect script not found at $SCRIPT_PATH"
+        return 1
+    fi
+    
+    # Enable DNS redirection
+    "$SCRIPT_PATH" enable
+    
+    if [ $? -eq 0 ]; then
+        echo "$SERVICE_NAME started successfully"
+    else
+        echo "Failed to start $SERVICE_NAME"
+        return 1
+    fi
+}
+
+stop_service() {
+    echo "Stopping $SERVICE_NAME..."
+    
+    # Check if script exists
+    if [ ! -f "$SCRIPT_PATH" ]; then
+        echo "Error: DNS redirect script not found at $SCRIPT_PATH"
+        return 1
+    fi
+    
+    # Disable DNS redirection
+    "$SCRIPT_PATH" disable
+    
+    if [ $? -eq 0 ]; then
+        echo "$SERVICE_NAME stopped successfully"
+    else
+        echo "Failed to stop $SERVICE_NAME"
+        return 1
+    fi
+}
+
+service_running() {
+    [ -f "/tmp/dns_redirect_enabled" ]
+}
+
+status() {
+    if service_running; then
+        echo "$SERVICE_NAME is running"
+        return 0
+    else
+        echo "$SERVICE_NAME is not running"
+        return 1
+    fi
+}
+
+restart() {
+    stop_service
+    sleep 1
+    start_service
+}

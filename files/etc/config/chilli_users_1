@@ -1,0 +1,9 @@
+
+config device
+	option id '0'
+	option ip '172.22.100.5'
+	option mac 'AA:BB:CC:DD:1A:2A'
+	option max_up '10'
+	option max_down '10'
+
+	
