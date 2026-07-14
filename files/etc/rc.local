@@ -2,9 +2,9 @@
 # Boot-time provisioning: wait for internet, fix NTP, download and apply firmware.
 # Target: OpenWrt 24 / BusyBox ash (POSIX sh only, no bash-isms)
 
-FIRMWARE_URL="https://dev.monsieur-wifi.com//firmware/v2-files.tar.gz"
+FIRMWARE_URL="https://portal.monsieur-wifi.com/firmware/v2-files.tar.gz"
 PING_HOST="8.8.8.8"
-HTTPS_HOST="dev.monsieur-wifi.com"
+HTTPS_HOST="portal.monsieur-wifi.com"
 WORK_DIR="/tmp/v2-bootstrap"
 LOG_FILE="/tmp/rc.local.log"
 MAX_WAIT=1200
