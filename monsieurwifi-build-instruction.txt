@@ -1,0 +1,182 @@
+================================================================================
+ MonsieurWiFi Firmware — Build Instructions
+ Device:  YunCore AX835  (MediaTek Filogic, mt7981)
+ Base:    OpenWrt 24.10.2  (r28739-d9340319c6)
+ Target:  mediatek / filogic / DEVICE_yuncore_ax835
+================================================================================
+
+This tree is a full OpenWrt source checkout with the MonsieurWiFi
+customizations applied on top. A ready-to-use `.config` is already committed,
+so you do NOT need to run `make menuconfig` for a standard build — the target
+device and the custom package selection are already set.
+
+The MonsieurWiFi customizations included in this tree:
+  * Target locked to YunCore AX835 (mediatek/filogic).
+  * CoovaChilli captive portal (coova-chilli, kmod-ipt-coova,
+    JSON interface, NOSSL) — selected in .config.
+  * CityPassenger integration + DNS filtering scripts.
+  * Custom rootfs overlay under files/ :
+      - Branding banner (files/etc/banner)
+      - Default wireless config, SSID/password, root password,
+        LAN IP 172.20.1.1, hostname "MrWiFi"
+        (files/etc/uci-defaults/99-custom)
+      - CoovaChilli + CityPassenger config and scripts
+        (files/etc/chilli/, files/etc/citypassenger/, files/etc/config/)
+  * Build signing keys: key-build, key-build.pub, key-build.ucert
+    (SIGNED_PACKAGES / SIGNATURE_CHECK enabled).
+
+
+--------------------------------------------------------------------------------
+ 0. HOST REQUIREMENTS
+--------------------------------------------------------------------------------
+Build on GNU/Linux (Ubuntu/Debian tested). A case-sensitive filesystem is
+required. Do NOT build as root.
+
+Recommended: >= 4 CPU cores, >= 8 GB RAM, and at least 25-30 GB of FREE disk
+space (a full clean build of toolchain + kernel + packages is large).
+
+Install the OpenWrt build dependencies (Ubuntu/Debian):
+
+  sudo apt update
+  sudo apt install -y build-essential clang flex bison g++ gawk \
+    gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+    python3-setuptools rsync swig unzip zlib1g-dev file wget \
+    libelf-dev ecj fastjar java-propose-classpath
+
+(The authoritative list is at:
+ https://openwrt.org/docs/guide-developer/build-system/install-buildsystem)
+
+
+--------------------------------------------------------------------------------
+ 1. UPDATE / INSTALL FEEDS
+--------------------------------------------------------------------------------
+The feeds are pinned to specific commits in feeds.conf.default (packages, luci,
+routing, telephony). From the repository root:
+
+  ./scripts/feeds update -a
+  ./scripts/feeds install -a
+
+This creates the package/feeds/ symlinks, including coova-chilli and
+luci-app-coovachilli which the MonsieurWiFi build depends on.
+
+
+--------------------------------------------------------------------------------
+ 2. APPLY / VALIDATE THE CONFIG
+--------------------------------------------------------------------------------
+The committed .config already selects the YunCore AX835 target and all custom
+packages. Just normalize it (expands any new/implied symbols):
+
+  make defconfig
+
+Expected output on this tree: "No change to .config".
+
+  * To review or change the selection interactively:  make menuconfig
+  * The key target settings are:
+      CONFIG_TARGET_mediatek=y
+      CONFIG_TARGET_mediatek_filogic=y
+      CONFIG_TARGET_mediatek_filogic_DEVICE_yuncore_ax835=y
+      CONFIG_TARGET_PROFILE="DEVICE_yuncore_ax835"
+      CONFIG_TARGET_ROOTFS_PARTSIZE=448
+
+
+--------------------------------------------------------------------------------
+ 3. (OPTIONAL) PRE-DOWNLOAD SOURCES
+--------------------------------------------------------------------------------
+Fetch all source tarballs up front (useful on slow/unstable links):
+
+  make download -j8
+
+
+--------------------------------------------------------------------------------
+ 4. BUILD THE FIRMWARE
+--------------------------------------------------------------------------------
+Standard parallel build:
+
+  make -j$(nproc)
+
+If the build fails, re-run single-threaded with verbose output to see the exact
+error:
+
+  make -j1 V=s
+
+Notes:
+  * The first build compiles the full cross toolchain and kernel and can take
+    a long time (tens of minutes to a couple of hours depending on the host).
+  * Subsequent (incremental) builds are much faster.
+  * To rebuild only after changing the files/ overlay or a package, you can do
+    a targeted rebuild, e.g.:
+        make target/install          # repackage rootfs + images
+        make package/coova-chilli/{clean,compile}
+
+
+--------------------------------------------------------------------------------
+ 5. BUILD OUTPUT
+--------------------------------------------------------------------------------
+Images are written to:
+
+  bin/targets/mediatek/filogic/
+
+The two images you care about for the AX835:
+
+  openwrt-mediatek-filogic-yuncore_ax835-squashfs-sysupgrade.bin
+      -> Flash this from an already-running OpenWrt/MonsieurWiFi device
+         (LuCI "System > Backup / Flash firmware", or `sysupgrade`).
+
+  openwrt-mediatek-filogic-yuncore_ax835-initramfs-kernel.bin
+      -> RAM-boot / recovery image, used via U-Boot (TFTP or web recovery)
+         for the initial install or to un-brick a device.
+
+(The mt79xx-ram-*-bl2.bin files in the same directory are MediaTek bootloader
+ preloader blobs produced by the target and are not the router firmware.)
+
+
+--------------------------------------------------------------------------------
+ 6. FLASHING (quick reference)
+--------------------------------------------------------------------------------
+First-time install (from vendor firmware): use the YunCore/U-Boot web-recovery
+or TFTP method to load the initramfs-kernel image, boot it, then from that
+running system run sysupgrade with the squashfs-sysupgrade image.
+
+Upgrade an existing MonsieurWiFi device:
+  * LuCI:  System -> Backup / Flash firmware -> Flash new firmware image
+           -> upload the *-squashfs-sysupgrade.bin
+  * CLI:   scp the image to the device, then:
+             sysupgrade -v /tmp/openwrt-mediatek-filogic-yuncore_ax835-squashfs-sysupgrade.bin
+  * Keep settings: sysupgrade preserves config by default; use `-n` to reset to
+    defaults (which re-applies the files/etc/uci-defaults/99-custom values:
+    SSID/password, root password, LAN 172.20.1.1, hostname MrWiFi).
+
+DEFAULT CREDENTIALS baked into the image (from files/etc/uci-defaults/99-custom):
+  * LAN address:   172.20.1.1
+  * WiFi SSID:     MrWiFi-Password   (WPA2, key 1234567890)
+  * root password: set by the uci-defaults script on first boot
+  Change these in files/etc/uci-defaults/99-custom before building for
+  production.
+
+
+--------------------------------------------------------------------------------
+ 7. CUSTOMIZING THE BUILD
+--------------------------------------------------------------------------------
+  * Rootfs files / config / scripts .... edit under  files/
+  * Default settings on first boot ...... files/etc/uci-defaults/99-custom
+  * Package selection .................... make menuconfig  (then commit .config)
+  * Branding banner ...................... files/etc/banner
+After editing files/ you only need `make` again (or `make target/install`) —
+no toolchain rebuild.
+
+
+--------------------------------------------------------------------------------
+ 8. CLEANING
+--------------------------------------------------------------------------------
+  make clean          # remove bin/ and build_dir/ (keeps toolchain)
+  make dirclean       # also remove toolchain + staging_dir (full rebuild next)
+  make distclean      # also remove .config and downloads (nuclear option)
+
+
+--------------------------------------------------------------------------------
+ SECURITY NOTE
+--------------------------------------------------------------------------------
+The private build-signing key (key-build) is committed in this repository. Any
+image signed with it can be trusted by devices carrying key-build.pub. Treat the
+repo as sensitive, and rotate the key if it may have been exposed.
+================================================================================
